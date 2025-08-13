@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log´s Analyser</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f7f7f7;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    textarea {
+      width: 100%;
+      height: 150px;
+      font-family: monospace;
+      margin-bottom: 10px;
+    }
+
+    .tabs {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .tabs button {
+      margin: 0 5px;
+      padding: 8px 15px;
+      border: none;
+      background: #ddd;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .tabs button.active {
+      background: #007bff;
+      color: white;
+    }
+
+    #results {
+      border: 1px solid #ccc;
+      background: white;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+
+    
+
+    .line {
+      padding: 4px 6px;
+      margin-bottom: 2px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+    }
+
+    .error-label {
+      min-width: 180px;
+      font-weight: bold;
+      padding-right: 10px;
+    }
+
+    form>* {
+      margin: 6px 0;
+      display: block;
+    }
+
+    input[type="text"],
+    input[type="color"] {
+      padding: 6px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    label {
+      display: inline-block;
+      margin-right: 10px;
+    }
+
+    button {
+      cursor: pointer;
+      background: #007bff;
+      border: none;
+      color: white;
+      padding: 8px 15px;
+      border-radius: 3px;
+      font-weight: bold;
+    }
+
+    #patterns-list {
+      margin-top: 10px;
+    }
+
+    .pattern-item {
+      background: white;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      border-radius: 3px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pattern-info {
+      font-size: 14px;
+    }
+
+    .pattern-color-box {
+      width: 20px;
+      height: 20px;
+      border-radius: 3px;
+      margin-left: 6px;
+      border: 1px solid #999;
+    }
+
+    .delete-btn {
+      background: #dc3545;
+      border: none;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #copy-btn {
+      margin-top: 10px;
+      background: #28a745;
+    }
+
+    #export-btn,
+    #import-btn {
+      background: #17a2b8;
+      margin-top: 6px;
+      margin-right: 5px;
+    }
+
+    #import-file {
+      display: none;
+    }
+
+    #import-export-container {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Log´s Analyser</h1>
+
+  <div class="tabs">
+    <button id="tab-analyze" class="active">Analizar Logs</button>
+    <button id="tab-patterns">Patrones de error</button>
+  </div>
+
+  <section id="panel-analyze">
+    <textarea id="log-input" placeholder="Pega aquí las líneas de log..."></textarea>
+    <button id="analyze-btn">Analizar</button>
+    <button id="copy-btn">Copiar imagen al portapapeles</button>
+    <button id="clear-btn" style="background:#6c757d; margin-left:10px;">Limpiar Logs</button>
+
+    <div id="results" contenteditable="true" spellcheck="false"></div>
+  </section>
+
+  <section id="panel-patterns" style="display:none;">
+    <form id="pattern-form">
+      <label>Patrón (texto o regex):</label>
+      <input type="text" id="pattern-text" required placeholder="Ej: VCI connected" />
+      <label><input type="checkbox" id="pattern-isregex" /> Es expresión regular (regex)</label>
+      <label>Título del error:</label>
+      <input type="text" id="pattern-title" required placeholder="Ej: Conexion de SP a vehiculo" />
+      <label>Color para resaltar:</label>
+      <input type="color" id="pattern-color" value="#ff6347" />
+      <label>Descripción (opcional):</label>
+      <input type="text" id="pattern-desc" placeholder="Más detalles del error" />
+      <button type="submit">Guardar patrón</button>
+    </form>
+
+    <div id="import-export-container">
+      <button id="export-btn">Exportar reglas</button>
+      <button id="import-btn">Importar reglas</button>
+      <input type="file" id="import-file" accept=".json" />
+    </div>
+
+    <div id="patterns-list"></div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script>
+    (() => {
+      const tabAnalyzeBtn = document.getElementById('tab-analyze');
+      const tabPatternsBtn = document.getElementById('tab-patterns');
+      const panelAnalyze = document.getElementById('panel-analyze');
+      const panelPatterns = document.getElementById('panel-patterns');
+
+      const logInput = document.getElementById('log-input');
+      const analyzeBtn = document.getElementById('analyze-btn');
+      const resultsDiv = document.getElementById('results');
+      const copyBtn = document.getElementById('copy-btn');
+
+      const patternForm = document.getElementById('pattern-form');
+      const patternText = document.getElementById('pattern-text');
+      const patternIsRegex = document.getElementById('pattern-isregex');
+      const patternTitle = document.getElementById('pattern-title');
+      const patternColor = document.getElementById('pattern-color');
+      const patternDesc = document.getElementById('pattern-desc');
+      const patternsListDiv = document.getElementById('patterns-list');
+
+      const exportBtn = document.getElementById('export-btn');
+      const importBtn = document.getElementById('import-btn');
+      const importFile = document.getElementById('import-file');
+
+      let patterns = JSON.parse(localStorage.getItem('logPatterns') || '[]');
+
+      // Cambiar pestañas
+      tabAnalyzeBtn.onclick = () => {
+        tabAnalyzeBtn.classList.add('active');
+        tabPatternsBtn.classList.remove('active');
+        panelAnalyze.style.display = 'block';
+        panelPatterns.style.display = 'none';
+      };
+      tabPatternsBtn.onclick = () => {
+        tabPatternsBtn.classList.add('active');
+        tabAnalyzeBtn.classList.remove('active');
+        panelAnalyze.style.display = 'none';
+        panelPatterns.style.display = 'block';
+        renderPatterns();
+      };
+
+      // Guardar patrones en localStorage
+      function savePatterns() {
+        localStorage.setItem('logPatterns', JSON.stringify(patterns));
+      }
+
+      // Renderizar lista de patrones
+      function renderPatterns() {
+        patternsListDiv.innerHTML = '';
+        if (patterns.length === 0) {
+          patternsListDiv.textContent = 'No hay patrones registrados.';
+          return;
+        }
+        patterns.forEach((p, i) => {
+          const div = document.createElement('div');
+          div.className = 'pattern-item';
+          div.innerHTML = `
+        <div class="pattern-info">
+          <strong>${p.title}</strong> - <em>${p.pattern}</em> ${p.is_regex ? '(regex)' : '(texto)'}
+          <div style="margin-top:4px; font-size:12px; color:#555;">${p.description || ''}</div>
+        </div>
+        <div style="display:flex; align-items:center;">
+          <div class="pattern-color-box" style="background:${p.color};"></div>
+          <button class="delete-btn" data-index="${i}">Borrar</button>
+        </div>
+      `;
+          patternsListDiv.appendChild(div);
+        });
+
+        // Borrar patrón
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+          btn.onclick = e => {
+            const idx = parseInt(e.target.getAttribute('data-index'));
+            patterns.splice(idx, 1);
+            savePatterns();
+            renderPatterns();
+          };
+        });
+      }
+
+      // Añadir patrón nuevo
+      patternForm.onsubmit = e => {
+        e.preventDefault();
+        const newPattern = {
+          pattern: patternText.value.trim(),
+          is_regex: patternIsRegex.checked,
+          title: patternTitle.value.trim(),
+          color: patternColor.value,
+          description: patternDesc.value.trim()
+        };
+        if (!newPattern.pattern || !newPattern.title) {
+          alert('El patrón y el título son obligatorios.');
+          return;
+        }
+        patterns.push(newPattern);
+        savePatterns();
+        renderPatterns();
+        patternForm.reset();
+        patternColor.value = '#ff6347';
+        alert('Patrón guardado!');
+      };
+
+
+      // limpias logssss scriptt
+
+      const clearBtn = document.getElementById('clear-btn');
+
+      clearBtn.onclick = () => {
+        logInput.value = '';
+        resultsDiv.innerHTML = '';
+      };
+
+
+      // Analizar logs y colorear resultados
+      analyzeBtn.onclick = () => {
+        const text = logInput.value;
+        if (!text.trim()) {
+          alert('Pega las líneas de log antes de analizar.');
+          return;
+        }
+        const lines = text.split(/\r?\n/);
+        resultsDiv.innerHTML = '';
+
+        lines.forEach(line => {
+          let matched = null;
+          for (const p of patterns) {
+            try {
+              if (p.is_regex) {
+                const re = new RegExp(p.pattern, 'i');
+                if (re.test(line)) {
+                  matched = p;
+                  break;
+                }
+              } else {
+                if (line.toLowerCase().includes(p.pattern.toLowerCase())) {
+                  matched = p;
+                  break;
+                }
+              }
+            } catch (e) {
+              // Regex inválido, ignorar
+            }
+          }
+
+          const div = document.createElement('div');
+          div.className = 'line';
+          if (matched) {
+            div.style.backgroundColor = matched.color;
+            div.innerHTML = `<div class="error-label">${matched.title}</div><div>${line}</div>`;
+          } else {
+            div.textContent = line;
+          }
+          resultsDiv.appendChild(div);
+        });
+      };
+
+      // Copiar imagen del recuadro al portapapeles (captura completa)
+      copyBtn.onclick = async () => {
+        try {
+          const canvas = await html2canvas(resultsDiv, {
+            backgroundColor: '#fff',
+            scale: 2,
+            scrollY: -window.scrollY,
+            useCORS: true
+          });
+          canvas.toBlob(async blob => {
+            try {
+              await navigator.clipboard.write([
+                new ClipboardItem({'image/png': blob})
+              ]);
+              alert('Imagen copiada al portapapeles');
+            } catch {
+              alert('Error: No se pudo copiar la imagen. Tu navegador puede no soportar esta función.');
+            }
+          });
+        } catch {
+          alert('Error al capturar la imagen');
+        }
+      };
+
+      // Exportar patrones a archivo JSON
+      exportBtn.onclick = () => {
+        const dataStr = JSON.stringify(patterns, null, 2);
+        const blob = new Blob([dataStr], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'patrones-logs.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      // Importar patrones desde archivo JSON
+      importBtn.onclick = () => {
+        importFile.click();
+      };
+
+      importFile.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try {
+            const importedPatterns = JSON.parse(ev.target.result);
+            if (!Array.isArray(importedPatterns)) throw new Error("Formato inválido");
+            // Validar cada patrón mínimo:
+            for (const p of importedPatterns) {
+              if (typeof p.pattern !== 'string' || typeof p.title !== 'string' || typeof p.color !== 'string') {
+                throw new Error("Patrón inválido");
+              }
+              if (typeof p.is_regex !== 'boolean') p.is_regex = false;
+              if (typeof p.description !== 'string') p.description = "";
+            }
+            patterns = importedPatterns;
+            savePatterns();
+            renderPatterns();
+            alert("Patrones importados correctamente");
+          } catch {
+            alert("Archivo inválido o corrupto");
+          }
+        };
+        reader.readAsText(file);
+        importFile.value = ""; // Reset para permitir importar el mismo archivo varias veces
+      };
+
+      // Al cargar, mostrar patrones guardados
+      renderPatterns();
+
+    })();
+  </script>
+
+</body>
+
+</html>
